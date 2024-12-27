@@ -12,9 +12,9 @@ if (!defined('ABSPATH')) {
 function researcher_input_form() {
     // Define the path to the Python script
     $python_script_path = plugin_dir_path(__FILE__) . '../python/youtube_search.py';
-    
+
     // Define the full path to the Python executable
-    $python_path = '/Users/nicolaspavez/Local Sites/researcherplugin/app/public/wp-content/plugins/researcher/shortcodes/researcher-env/bin/python';
+    $python_path = plugin_dir_path(__FILE__) . 'researcher-env/bin/python';
 
     // Initialize variables for error and success messages and results
     $error_message   = '';
@@ -29,7 +29,7 @@ function researcher_input_form() {
         } else {
             // Sanitize the search term
             $concepts = sanitize_text_field($_POST['researcher_concepts']);
-            
+
             // Check if the search term is empty
             if (empty($concepts)) {
                 $error_message = 'Please enter one or more concepts to search.';
@@ -42,17 +42,20 @@ function researcher_input_form() {
                     $error_message = 'YouTube API Key not configured. Please configure it in the plugin settings.';
                 } else {
                     // Add YOUTUBE_API_KEY to the environment before executing the command
-                    $command = 'YOUTUBE_API_KEY=' . escapeshellarg($api_key) . ' ' . escapeshellcmd("\"$python_path\"") . ' ' . escapeshellarg($python_script_path) . ' ' . escapeshellarg($concepts) . ' 2>&1';
+                    $command = 'YOUTUBE_API_KEY=' . escapeshellarg($api_key) . ' ' .
+                        escapeshellcmd("\"$python_path\"") . ' ' .
+                        escapeshellarg($python_script_path) . ' ' .
+                        escapeshellarg($concepts) . ' 2>&1';
 
                     // Execute the command and capture the output
                     $output = shell_exec($command);
 
                     // Log the raw output for debugging
                     error_log("Python script output: " . $output);
-                    
+
                     // Decode the JSON output
                     $decoded_json = json_decode($output, true);
-                    
+
                     // Handle possible JSON errors
                     if (json_last_error() !== JSON_ERROR_NONE) {
                         $error_message = "Error decoding JSON: " . json_last_error_msg();
@@ -72,59 +75,31 @@ function researcher_input_form() {
         }
     }
 
-    // Start output buffering to capture the generated HTML
+    // Include the separate components for the form, filters, and results
+    include_once plugin_dir_path(__FILE__) . 'search-form.php';
+    include_once plugin_dir_path(__FILE__) . 'filters.php';
+    include_once plugin_dir_path(__FILE__) . 'results.php';
+
+    // Start output buffering to capture the full layout
     ob_start(); ?>
+    <div style="display: flex; gap: 20px;">
+        <div style="flex: 1; max-width: 30%;">
+            <?php 
+            // Render the search form
+            echo render_search_form();
 
-    <!-- Search Form -->
-    <form method="post">
-        <?php 
-            // Nonce field for security
-            wp_nonce_field('researcher_form_nonce', 'researcher_nonce'); 
-        ?>
-        <label for="researcher_concepts">Enter one or more concepts:</label><br>
-        <input 
-            type="text" 
-            id="researcher_concepts" 
-            name="researcher_concepts" 
-            placeholder="E.g.: Historia del Salitre" 
-            required
-            value="<?php echo isset($_POST['researcher_concepts']) ? esc_attr($_POST['researcher_concepts']) : ''; ?>"
-        ><br><br>
-        <input 
-            type="submit" 
-            name="researcher_submit" 
-            value="Search"
-            style="padding: 10px 20px; background-color: #0073aa; color: #fff; border: none; cursor: pointer;"
-        >
-    </form>
-
+            // Render the filters section
+            echo render_filters_section();
+            ?>
+        </div>
+        <div style="flex: 2;" id="researcher-results">
+            <?php
+            // Render the results section
+            echo render_results_section($error_message, $success_message, $results);
+            ?>
+        </div>
+    </div>
     <?php
-    // Display error messages if they exist
-    if (!empty($error_message)) {
-        echo "<div style='color: red; margin-top: 20px;'><p>" . esc_html($error_message) . "</p></div>";
-    }
-
-    // Display success messages and results if they exist
-    if (!empty($success_message)) {
-        echo "<h3 style='margin-top: 20px;'>" . esc_html($success_message) . "</h3>";
-        
-        if (!empty($results) && is_array($results)) {
-            echo "<ul style='list-style-type: none; padding: 0;'>";
-            foreach ($results as $video) {
-                // Verify that the necessary fields exist
-                if (isset($video['title'], $video['url'], $video['description'])) {
-                    echo "<li style='margin-bottom: 20px; padding: 10px; border: 1px solid #ddd; border-radius: 5px;'>";
-                    echo "<a href='" . esc_url($video['url']) . "' target='_blank' style='font-size: 18px; font-weight: bold; color: #0073aa; text-decoration: none;'>" . esc_html($video['title']) . "</a>";
-                    echo "<p style='margin-top: 5px;'>" . esc_html($video['description']) . "</p>";
-                    echo "</li>";
-                }
-            }
-            echo "</ul>";
-        } else {
-            echo "<p>No results found.</p>";
-        }
-    }
-    
     // Capture the buffer content and return it
     return ob_get_clean();
 }
